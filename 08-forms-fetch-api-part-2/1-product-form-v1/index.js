@@ -7,6 +7,7 @@ const BACKEND_URL = 'https://course-js.javascript.ru';
 export default class ProductForm {
   subElements = {};
   _defaultFormData = {
+    id: null,
     title: '',
     description: '',
     subcategory: '',
@@ -34,23 +35,32 @@ export default class ProductForm {
         return;
       }
 
-      // const { imageListContainer } = this.subElements;
+      const { imageListContainer } = this.subElements;
+
       const formData = new FormData();
       formData.append('name', file.name);
       formData.append('image', file);
 
-      // const response = await this._fetchUploadImage(formData);
+      const response = await this._fetchUploadImage(formData);
 
-      // const imgObj = {
-      //   source: response.data.name,
-      //   url: response.data.link
-      // };
+      if (response.data) {
+        const imgObj = {
+          source: escapeHtml(response.data.name),
+          url: escapeHtml(response.data.link)
+        };
 
-      // console.log(imgObj);
-      // imageListContainer.append(this._addPhotoItem(imgObj));
+        this._formData.images.push(imgObj);
+        imageListContainer.append(this._addPhotoItem(imgObj));
+      }
     };
 
     imageInput.click();
+  };
+
+  onDeleteImage = event => {
+    if ('deleteHandle' in event.target.dataset) {
+      event.target.closest('li').remove();
+    }
   };
 
   constructor (productId) {
@@ -58,18 +68,12 @@ export default class ProductForm {
   }
 
   async render() {
+    const getCategories = this._fetchCategoriesData();
     const getProduct = this.productId
       ? this._fetchProductData(this.productId)
       : [this._defaultFormData];
-    const getCategories = this._fetchCategoriesData();
 
-    // const [categoriesData, productData] = await Promise.all([getCategories, getProduct]);
-    const productData = await getProduct;
-    const categoriesData = await getCategories;
-
-
-    console.log(categoriesData);
-    console.log(productData);
+    const [productData, categoriesData] = await Promise.all([getProduct, getCategories]);
 
     this._formData = productData[0];
     this._categoriesData = categoriesData;
@@ -79,13 +83,11 @@ export default class ProductForm {
     this.element = element.firstElementChild;
     this.subElements = this._getSubElements(this.element);
 
-    if (!productData.length) {
-      return;
+    if (productData.length) {
+      this._setFormData();
+      this._setImageData();
+      this._addEventListeners();
     }
-
-    this._setFormData();
-    this._setImageData();
-    this._addEventListeners();
 
     return this.element;
   }
@@ -150,18 +152,28 @@ export default class ProductForm {
   }
 
   _getFormData() {
-    const { productForm } = this.subElements;
+    const { productForm, imageListContainer } = this.subElements;
+
+    const images = [];
+    const imagesHTMLCollection = imageListContainer.querySelectorAll('.sortable-table__cell-img');
+
+    for (const image of imagesHTMLCollection) {
+      images.push({
+        url: image.src,
+        source: image.alt
+      });
+    }
 
     return {
       id: this.productId ? this.productId : null,
-      title: String(productForm.elements.title.value),
-      description: String(productForm.elements.description.value),
-      subcategory: String(productForm.elements.subcategory.value),
-      images: [],
-      price: Number(productForm.elements.price.value),
-      discount: Number(productForm.elements.discount.value),
-      quantity: Number(productForm.elements.quantity.value),
-      status: Number(productForm.elements.status.value)
+      title: escapeHtml(productForm.elements.title.value),
+      description: escapeHtml(productForm.elements.description.value),
+      subcategory: escapeHtml(productForm.elements.subcategory.value),
+      images: images,
+      price: Number(escapeHtml(productForm.elements.price.value)),
+      discount: Number(escapeHtml(productForm.elements.discount.value)),
+      quantity: Number(escapeHtml(productForm.elements.quantity.value)),
+      status: Number(escapeHtml(productForm.elements.status.value))
     };
   }
 
@@ -172,20 +184,22 @@ export default class ProductForm {
   }
 
   _dispatchEvent(id) {
+    const eventDetail = { productId: id };
     const event = this.productId
-      ? new CustomEvent('product-updated', { detail: id })
+      ? new CustomEvent('product-updated', { detail: eventDetail })
       : new CustomEvent('product-created');
 
     this.element.dispatchEvent(event);
   }
 
   _addEventListeners() {
-    const { productForm } = this.subElements;
+    const { productForm, imageListContainer } = this.subElements;
     const btnSubmit = productForm.elements.save;
     const btnUploadImage = productForm.elements.uploadImage;
 
     btnSubmit.addEventListener('click', this.onSubmit);
     btnUploadImage.addEventListener('pointerdown', this.onUploadImage);
+    imageListContainer.addEventListener('click', this.onDeleteImage);
   }
 
   _getSubElements(element) {
@@ -264,15 +278,13 @@ export default class ProductForm {
   _createTemplateProductPhotoItem(img) {
     return `
       <li class="products-edit__imagelist-item sortable-list__item">
-        <input type="hidden" name="url" value="${img.url}">
-        <input type="hidden" name="source" value="${img.source}">
         <span>
           <img src="icon-grab.svg" alt="grab">
-          <img class="sortable-table__cell-img" alt="Image" src="${img.url}">
+          <img class="sortable-table__cell-img" alt="${img.source}" src="${img.url}">
           <span>${img.source}</span>
         </span>
         <button type="button">
-          <img src="icon-trash.svg" alt="delete">
+          <img src="icon-trash.svg" alt="delete" data-delete-handle>
         </button>
       </li>
     `;
